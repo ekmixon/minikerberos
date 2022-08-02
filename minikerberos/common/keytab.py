@@ -99,10 +99,7 @@ class KeytabOctetString:
     def from_asn1(data):
         o = KeytabOctetString()
         o.length = len(data)
-        if isinstance(data, str):
-            o.data = data.encode()
-        else:
-            o.data = data
+        o.data = data.encode() if isinstance(data, str) else data
         return o
 
     @staticmethod

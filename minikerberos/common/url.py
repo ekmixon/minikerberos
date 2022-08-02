@@ -81,7 +81,7 @@ class KerberosClientURL:
 			res.password = self.secret
 		elif self.secret_type in [KerberosSecretType.NT, KerberosSecretType.RC4]:
 			if len(self.secret) != 32:
-				raise Exception('Incorrect RC4/NT key! %s' % self.secret)
+				raise Exception(f'Incorrect RC4/NT key! {self.secret}')
 			res.nt_hash = self.secret
 			res.kerberos_key_rc4 = self.secret
 		elif self.secret_type in [KerberosSecretType.AES128, KerberosSecretType.AES256, KerberosSecretType.AES]:
@@ -91,22 +91,22 @@ class KerberosClientURL:
 				elif len(self.secret) == 64:
 					res.kerberos_key_aes_256 = self.secret
 				else:
-					raise Exception('Incorrect AES key! %s' % self.secret)
+					raise Exception(f'Incorrect AES key! {self.secret}')
 			elif self.secret_type == KerberosSecretType.AES128:
 				if len(self.secret) != 32:
-					raise Exception('Incorrect AES128 key! %s' % self.secret)
+					raise Exception(f'Incorrect AES128 key! {self.secret}')
 				res.kerberos_key_aes_128 = self.secret
-			else:
-				if len(self.secret) != 64:
-					raise Exception('Incorrect AES256 key! %s' % self.secret)
+			elif len(self.secret) == 64:
 				res.kerberos_key_aes_256 = self.secret
+			else:
+				raise Exception(f'Incorrect AES256 key! {self.secret}')
 		elif self.secret_type == KerberosSecretType.DES:
 			if len(self.secret) != 16:
-				raise Exception('Incorrect DES key! %s' % self.secret)
+				raise Exception(f'Incorrect DES key! {self.secret}')
 			res.kerberos_key_des = self.secret
 		elif self.secret_type in [KerberosSecretType.DES3, KerberosSecretType.TDES]:
 			if len(self.secret) != 24:
-				raise Exception('Incorrect DES3 key! %s' % self.secret)
+				raise Exception(f'Incorrect DES3 key! {self.secret}')
 			res.kerberos_key_des3 = self.secret
 		elif self.secret_type == KerberosSecretType.CCACHE:
 			res.ccache = self.secret
@@ -122,13 +122,13 @@ class KerberosClientURL:
 
 		res.dc_ip = url.hostname
 		schemes = url.scheme.upper().split('+')
-		
+
 		if schemes[0] not in ['KERBEROS', 'KERBEROS-TCP, KERBEROS-UDP', 'KRB5', 'KRB5-UDP', 'KRB5-TCP']:
-			raise Exception('Unknown protocol! %s' % schemes[0])
+			raise Exception(f'Unknown protocol! {schemes[0]}')
 
 		if schemes[0].endswith('UDP') is True:
 			res.protocol = KerberosSocketType.UDP
-		
+
 		ttype = schemes[1]
 		if ttype.find('-') != -1 and ttype.upper().endswith('-PROMPT'):
 			ttype = ttype.split('-')[0]
@@ -136,28 +136,27 @@ class KerberosClientURL:
 		try:
 			res.secret_type = KerberosSecretType(ttype)
 		except:
-			raise Exception('Unknown secret type! %s' % ttype)
-		
-		if url.username is not None:
-			if url.username.find('\\') != -1:
-				res.domain , res.username = url.username.split('\\')
-			else:
-				raise Exception('Domain missing from username!')
-		else:
+			raise Exception(f'Unknown secret type! {ttype}')
+
+		if url.username is None:
 			raise Exception('Missing username!')
-		
+
+		if url.username.find('\\') != -1:
+			res.domain , res.username = url.username.split('\\')
+		else:
+			raise Exception('Domain missing from username!')
 		if res.secret is None:
 			res.secret = url.password
 		if url.port is not None:
 			res.port = int(url.port)
-		
+
 		query = parse_qs(url.query)
 		proxy_type = None
 		for k in query:
 			if k == 'proxytype':
 				proxy_type = query[k][0]
 
-			
+
 			if k in kerberosclienturl_param2var:
 				data = query[k][0]
 				for c in kerberosclienturl_param2var[k][1]:
@@ -168,7 +167,7 @@ class KerberosClientURL:
 							kerberosclienturl_param2var[k][0], 
 							data
 						)
-		
+
 		if proxy_type is not None:
 			cu = SocksClientURL.from_params(url_str)
 			cu[-1].endpoint_ip = res.dc_ip
@@ -177,7 +176,7 @@ class KerberosClientURL:
 			res.proxy = KerberosProxy(cu, None, type='SOCKS')
 
 
-		
+
 		if res.username is None:
 			raise Exception('Missing username!')
 		if res.secret is None:
@@ -186,7 +185,7 @@ class KerberosClientURL:
 			raise Exception('Missing secret_type!')
 		if res.dc_ip is None:
 			raise Exception('Missing target hostname!')
-		
+
 		return res
 
 if __name__ == '__main__':

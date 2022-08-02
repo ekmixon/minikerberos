@@ -54,12 +54,11 @@ class KerberosClientSocket:
 					if temp == b'':
 						break
 					buff += temp
-					if total_length == -1:
-						if len(buff) > 4:
-							total_length = int.from_bytes(buff[:4], byteorder = 'big', signed = False)
-							if total_length == 0:
-								raise Exception('Returned data length is 0! This means the server did not understand our message')
-					
+					if total_length == -1 and len(buff) > 4:
+						total_length = int.from_bytes(buff[:4], byteorder = 'big', signed = False)
+						if total_length == 0:
+							raise Exception('Returned data length is 0! This means the server did not understand our message')
+
 					if total_length != -1:
 						if len(buff) == total_length + 4:
 							buff = buff[4:]
@@ -68,8 +67,8 @@ class KerberosClientSocket:
 							raise Exception('Got too much data somehow')
 						else:
 							continue
-							
-				
+
+
 			elif self.soc_type == KerberosSocketType.UDP:
 				self.soc.sendto(data, (self.dst_ip, self.dst_port))
 				while True:

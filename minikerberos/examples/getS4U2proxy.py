@@ -21,7 +21,7 @@ async def amain(args):
 
 	service_spn = KerberosSPN.from_target_string(args.spn)
 	target_user = KerberosSPN.from_user_email(args.targetuser)
-	
+
 	if not ccred.ccache:
 		logger.debug('Getting TGT')
 		client = AIOKerberosClient(ccred, target)
@@ -32,18 +32,18 @@ async def amain(args):
 		logger.debug('Getting TGS via TGT from CCACHE')
 		for tgt, key in ccred.ccache.get_all_tgt():
 			try:
-				logger.info('Trying to get SPN with %s' % '!'.join(tgt['cname']['name-string']))
+				logger.info(f"Trying to get SPN with {'!'.join(tgt['cname']['name-string'])}")
 				client = AIOKerberosClient.from_tgt(target, tgt, key)
 
 				tgs, encTGSRepPart, key = await client.getST(target_user, service_spn)
 				logger.info('Sucsess!')
 			except Exception as e:
-				logger.debug('This ticket is not usable it seems Reason: %s' % e)
+				logger.debug(f'This ticket is not usable it seems Reason: {e}')
 				continue
 			else:
 				break
 
-	client.ccache.to_file(args.ccache)	
+	client.ccache.to_file(args.ccache)
 	logger.info('Done!')
 
 

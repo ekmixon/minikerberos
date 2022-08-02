@@ -4,11 +4,10 @@ import re
 VERSIONFILE="minikerberos/_version.py"
 verstrline = open(VERSIONFILE, "rt").read()
 VSRE = r"^__version__ = ['\"]([^'\"]*)['\"]"
-mo = re.search(VSRE, verstrline, re.M)
-if mo:
-    verstr = mo.group(1)
+if mo := re.search(VSRE, verstrline, re.M):
+    verstr = mo[1]
 else:
-    raise RuntimeError("Unable to find version string in %s." % (VERSIONFILE,))
+    raise RuntimeError(f"Unable to find version string in {VERSIONFILE}.")
 
 setup(
 	# Application name:

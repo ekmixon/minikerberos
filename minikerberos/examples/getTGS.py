@@ -29,7 +29,7 @@ async def amain(args):
 	cu = KerberosClientURL.from_url(args.kerberos_connection_url)
 	ccred = cu.get_creds()
 	target = cu.get_target()
-	
+
 	logging.debug('Getting TGT')
 
 	client = AIOKerberosClient(ccred, target)
@@ -37,7 +37,7 @@ async def amain(args):
 	await client.get_TGT()
 	logging.debug('Getting TGS')
 	await client.get_TGS(spn)
-				
+
 	client.ccache.to_file(args.ccache)
 	logging.info('Done!')
 

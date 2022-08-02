@@ -238,10 +238,8 @@ def CertOpenSystemStore(subSystemProtocol = 'MY'):
 	_CertOpenSystemStore.argtypes = [PVOID, LPWSTR]
 	_CertOpenSystemStore.restype = HCERTSTORE
 	_CertOpenSystemStore.errcheck = RaiseIfZero
-	
-	handle = _CertOpenSystemStore(None, subSystemProtocol)
 
-	return handle
+	return _CertOpenSystemStore(None, subSystemProtocol)
 
 # https://docs.microsoft.com/en-us/windows/win32/api/wincrypt/nf-wincrypt-certclosestore
 def CertCloseStore(handle, dwFlags = 0):
@@ -294,9 +292,14 @@ def CryptMsgOpenToEncode(MsgEncodeInfo, dwMsgEncodingType = X509_ASN_ENCODING | 
 
 	if isinstance(InnerContentObjID, str):
 		InnerContentObjID = ctypes.create_string_buffer(InnerContentObjID)
-	res = _CryptMsgOpenToEncode(dwMsgEncodingType, dwFlags, dwMsgType, byref(MsgEncodeInfo), InnerContentObjID, StreamInfo)
-
-	return res
+	return _CryptMsgOpenToEncode(
+		dwMsgEncodingType,
+		dwFlags,
+		dwMsgType,
+		byref(MsgEncodeInfo),
+		InnerContentObjID,
+		StreamInfo,
+	)
 
 def CryptMsgUpdate(hCryptMsg, data, fFinal = True):
 	_CryptMsgUpdate = windll.crypt32.CryptMsgUpdate
@@ -306,19 +309,17 @@ def CryptMsgUpdate(hCryptMsg, data, fFinal = True):
 
 	dlen = len(data)
 	data = ctypes.create_string_buffer(data, len(data))
-	res = _CryptMsgUpdate(hCryptMsg, data, dlen, fFinal)
-
-	return res
+	return _CryptMsgUpdate(hCryptMsg, data, dlen, fFinal)
 
 def CryptMsgGetParam(hCryptMsg, ptype, dwIndex = 0):
 	_CryptMsgGetParam = windll.crypt32.CryptMsgGetParam
 	_CryptMsgGetParam.argtypes = [HCRYPTMSG, DWORD, DWORD, PVOID, LPDWORD]
 	_CryptMsgGetParam.restype = BOOL
 
-	
+
 	dlen = DWORD(0)
 	res = _CryptMsgGetParam(hCryptMsg, ptype, dwIndex, None, byref(dlen))
-	
+
 	data = ctypes.create_string_buffer(dlen.value)
 	res = _CryptMsgGetParam(hCryptMsg, ptype, dwIndex, byref(data), byref(dlen))
 	if res != True:
@@ -340,7 +341,7 @@ def list_certstore(certstore_name = 'MY'):
 	hcert = None
 	while True:
 		hcert = CertEnumCertificatesInStore(chandle, hcert)
-		if bool(hcert) is False:
+		if not bool(hcert):
 			#null ptr means no more certs
 			break
 
@@ -354,7 +355,7 @@ def list_certstore(certstore_name = 'MY'):
 
 		else:
 			input('!')
-	if bool(hcert) is True:
+	if bool(hcert):
 		CertFreeCertificateContext(hcert)
 
 def find_cert_by_cn(common_name, certstore_name = 'MY'):
@@ -362,17 +363,19 @@ def find_cert_by_cn(common_name, certstore_name = 'MY'):
 	hcert = None
 	while True:
 		hcert = CertEnumCertificatesInStore(chandle, hcert)
-		if bool(hcert) is False:
-			raise Exception('Couldnt find certificate for %s in certstore %s' % (common_name, certstore_name))
+		if not bool(hcert):
+			raise Exception(
+				f'Couldnt find certificate for {common_name} in certstore {certstore_name}'
+			)
+
 		certificate = get_cert(hcert)
 		subject = certificate.subject.native['common_name']
 		if isinstance(subject, list):
 			for se in subject:
 				if se == common_name:
 					return certificate, hcert
-		else:
-			if subject == common_name:
-				return certificate, hcert
+		elif subject == common_name:
+			return certificate, hcert
 
 	
 
@@ -413,6 +416,4 @@ def pkcs7_sign(hcert, data):
 	hmsg = CryptMsgOpenToEncode(MsgEncodeInfo)
 
 	CryptMsgUpdate(hmsg, data, True)
-	res = CryptMsgGetParam(hmsg, CMSG_CONTENT_PARAM)
-	
-	return res
+	return CryptMsgGetParam(hmsg, CMSG_CONTENT_PARAM)

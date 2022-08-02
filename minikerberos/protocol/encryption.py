@@ -130,16 +130,16 @@ def _nfold(str, nbytes):
 		remains = (num << (size - nbits)) - (body << size)
 		return (body + remains).to_bytes(len(str), byteorder ='big', signed = False)
 
-		
+
 
 	# Add equal-length strings together with end-around carry.
 	def add_ones_complement(str1, str2):
 		n = len(str1)
 		v = []
-		for i in range(0,len(str1), 1):
+		for i in range(len(str1)):
 			t = str1[i] + str2[i]
 			v.append(t)
-		
+
 		#v = [ord(a) + ord(b) for a, b in zip(str1, str2)]
 		# Propagate carry bits to the left until there aren't any left.
 		while any(x & ~0xff for x in v):
@@ -155,7 +155,7 @@ def _nfold(str, nbytes):
 	lcm = int(nbytes * slen / gcd(nbytes, slen))
 	bigstr = b''.join((rotate_right(str, 13 * i) for i in range(int(lcm / slen))))
 	slices = (bigstr[p:p+nbytes] for p in range(0, lcm, nbytes))
-	
+
 	return functools.reduce(add_ones_complement,  slices)
 
 
@@ -219,7 +219,7 @@ class _SimplifiedEnctype(_EnctypeProfile):
 			ciphertext = cls.basic_encrypt(key, plaintext)
 			rndseed += ciphertext
 			plaintext = ciphertext
-		return cls.random_to_key(rndseed[0:cls.seedsize])
+		return cls.random_to_key(rndseed[:cls.seedsize])
 
 	@classmethod
 	def encrypt(cls, key, keyusage, plaintext, confounder):
@@ -281,12 +281,12 @@ class _DESCBC(_SimplifiedEnctype):
 	def decrypt(cls, key, keyusage, ciphertext):
 		if len(ciphertext) < cls.blocksize + cls.macsize:
 			raise ValueError('ciphertext too short')
-		
+
 		complex_plaintext = cls.basic_decrypt(key, ciphertext)
 		cofounder = complex_plaintext[:cls.padsize]
 		mac = complex_plaintext[cls.padsize:cls.padsize+cls.macsize]
 		message = complex_plaintext[cls.padsize+cls.macsize:]
-		
+
 		expmac = cls.hashmod.new(cofounder+'\x00'*cls.macsize+message).digest()
 		if not _mac_equal(mac, expmac):
 			raise InvalidChecksum('ciphertext integrity failure')
@@ -294,70 +294,72 @@ class _DESCBC(_SimplifiedEnctype):
 	
 	@classmethod
 	def mit_des_string_to_key(cls,string,salt):
-	
+
 		def fixparity(deskey):
 			temp = b''
 			for byte in deskey:
 				t = (bin(byte)[2:]).rjust(8,'0')
 				if t[:7].count('1') %2 == 0:
-					temp+= int(t[:7]+'1',2).to_bytes(1, byteorder = 'big', signed = False)
+					temp += int(f'{t[:7]}1', 2).to_bytes(1, byteorder = 'big', signed = False)
 				else:
-					temp+= int(t[:7]+'0',2).to_bytes(1, byteorder = 'big', signed = False)
+					temp += int(f'{t[:7]}0', 2).to_bytes(1, byteorder = 'big', signed = False)
 			return temp
-	
+
 		def addparity(l1):
-			temp = list()
+			temp = []
 			for byte in l1:
-				if (bin(byte).count('1') % 2) == 0:
-					byte = (byte << 1)|0b00000001
-				else:
-					byte = (byte << 1)&0b11111110
+				byte = (
+					(byte << 1) | 0b00000001
+					if (bin(byte).count('1') % 2) == 0
+					else (byte << 1) & 0b11111110
+				)
+
 				temp.append(byte)
 			return temp
-		
+
 		def XOR(l1,l2):
-			temp = list()
+			temp = []
 			for b1,b2 in zip(l1,l2):
 				temp.append((b1^b2)&0b01111111)
-			
+
 			return temp
-		
+
 		odd = True
 		s = string + salt
 		tempstring = [0,0,0,0,0,0,0,0]
 		s = s + b'\x00'*( 8- (len(s)%8)) #pad(s); /* with nulls to 8 byte boundary */
-		
+
 		for block in [s[i:i+8] for i in range(0, len(s), 8)]:
-			temp56 = list()
+			temp56 = []
 			#removeMSBits
 			for byte in block:
 				temp56.append(byte&0b01111111)
-			
+
 			#reverse
 			if odd == False:
 				bintemp = ''
 				for byte in temp56:
 					bintemp += (bin(byte)[2:]).rjust(7,'0')
 				bintemp = bintemp[::-1]
-				
-				temp56 = list()
+
+				temp56 = []
 				for bits7 in [bintemp[i:i+7] for i in range(0, len(bintemp), 7)]:
 					temp56.append(int(bits7,2))
 
 			odd = not odd
-				
+
 			tempstring = XOR(tempstring,temp56)
-		
+
 		tempkey = b''.join(byte.to_bytes(1, byteorder = 'big', signed = False) for byte in addparity(tempstring))
 		if _is_weak_des_key(tempkey):
 			tempkey[7] = (tempkey[7] ^ 0xF0).to_bytes(1, byteorder = 'big', signed = False)
-		
+
 		cipher = DES(tempkey, DES_CBC, tempkey)
 		chekcsumkey = cipher.encrypt(s)[-8:]
 		chekcsumkey = fixparity(chekcsumkey)
 		if _is_weak_des_key(chekcsumkey):
 			chekcsumkey[7] = chr(ord(chekcsumkey[7]) ^ 0xF0)
-		
+
 		return Key(cls.enctype, chekcsumkey)
 
 	@classmethod
@@ -376,8 +378,7 @@ class _DESCBC(_SimplifiedEnctype):
 	def string_to_key(cls, string, salt, params):
 		if params is not None and params != '':
 			raise ValueError('Invalid DES string-to-key parameters')
-		key = cls.mit_des_string_to_key(string, salt)
-		return key
+		return cls.mit_des_string_to_key(string, salt)
 	
 	
 
@@ -512,7 +513,7 @@ class _RC4(_EnctypeProfile):
 		# Return a four-byte string for an RFC 3961 keyusage, using
 		# the RFC 4757 rules.  Per the errata, do not map 9 to 8.
 		table = {3: 8, 23: 13}
-		msusage = table[keyusage] if keyusage in table else keyusage
+		msusage = table.get(keyusage, keyusage)
 		return pack('<I', msusage)
 
 	@classmethod

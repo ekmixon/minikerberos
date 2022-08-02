@@ -26,7 +26,7 @@ class TestKerberosTGS(unittest.TestCase):
         self.kerberos_socet = KerberosSocket(self.target_ip)
 
     def test_plaintext(self):
-        
+
         cred = KerberosCredential()
         cred.username = self.username
         cred.password = self.password

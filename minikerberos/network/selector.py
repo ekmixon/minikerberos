@@ -10,8 +10,7 @@ class KerberosClientSocketSelector:
     def select(target, is_async = False):
         if is_async is False:
             return KerberosClientSocket(target)
+        if target.proxy is None:
+            return AIOKerberosClientSocket(target)
         else:
-            if target.proxy is not None:
-                return AIOKerberosClientSocksSocket(target)
-            else:
-                return AIOKerberosClientSocket(target)
+            return AIOKerberosClientSocksSocket(target)

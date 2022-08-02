@@ -44,12 +44,11 @@ class AIOKerberosClientWSNETSocket:
 			if err is not None:
 				raise err
 			resp_data += data
-			if resp_data_len == -1:
-				if len(resp_data) > 4:
-					resp_data_len = int.from_bytes(resp_data[:4], byteorder = 'big', signed = False)
-					if resp_data_len == 0:
-						raise Exception('Returned data length is 0! This means the server did not understand our message')
-			
+			if resp_data_len == -1 and len(resp_data) > 4:
+				resp_data_len = int.from_bytes(resp_data[:4], byteorder = 'big', signed = False)
+				if resp_data_len == 0:
+					raise Exception('Returned data length is 0! This means the server did not understand our message')
+
 			if resp_data_len != -1:
 				if len(resp_data) == resp_data_len + 4:
 					resp_data = resp_data[4:]
@@ -58,13 +57,12 @@ class AIOKerberosClientWSNETSocket:
 					raise Exception('Got too much data somehow')
 				else:
 					continue
-		
+
 		await self.out_queue.put(None)
 		if resp_data == b'':
 			raise Exception('Connection returned no data!')
-		
-		krb_message = KerberosResponse.load(resp_data)
-		return krb_message
+
+		return KerberosResponse.load(resp_data)
 
 		
 	def __str__(self):

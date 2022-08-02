@@ -48,16 +48,15 @@ class AIOKerberosClientSocket:
 				length = len(data).to_bytes(4, byteorder = 'big', signed = False)
 				self.writer.write(length + data)
 				await self.writer.drain()
-				
+
 				t = await self.reader.readexactly(4)
 				length = int.from_bytes(t, byteorder = 'big', signed = False)
 				data = await self.reader.readexactly(length)
-				
+
 			elif self.soc_type == KerberosSocketType.UDP:
 				raise Exception('Not implemented!')
-			
-			krb_message = KerberosResponse.load(data)
-			return krb_message
+
+			return KerberosResponse.load(data)
 		finally:
 			self.writer.close()
 			self.reader = None

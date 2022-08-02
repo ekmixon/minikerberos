@@ -50,8 +50,7 @@ class RC4():
             j = (j + self.S[i]) % 256
             self.S[i], self.S[j] = self.S[j], self.S[i]  # swap
 
-            K = self.S[(self.S[i] + self.S[j]) % 256]
-            yield K
+            yield self.S[(self.S[i] + self.S[j]) % 256]
 
 
     def encrypt(self, data):

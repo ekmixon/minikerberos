@@ -34,10 +34,9 @@ from minikerberos.gssapi.gssapi import GSSAPIFlags
 def length_encode(x):
 	if x <= 127:
 		return x.to_bytes(1, 'big', signed = False)
-	else:
-		lb = x.to_bytes((x.bit_length() + 7) // 8, 'big')
-		t = (0x80 | len(lb)).to_bytes(1, 'big', signed = False)
-		return t+lb
+	lb = x.to_bytes((x.bit_length() + 7) // 8, 'big')
+	t = (0x80 | len(lb)).to_bytes(1, 'big', signed = False)
+	return t+lb
 
 
 class DirtyDH:
@@ -78,7 +77,7 @@ class DirtyDH:
 		self.shared_key_int = pow(bob_int, self.private_key_int, self.p)
 		x = hex(self.shared_key_int)[2:]
 		if len(x) % 2 != 0:
-			x = '0' + x
+			x = f'0{x}'
 		self.shared_key = bytes.fromhex(x)
 		return self.shared_key
 
@@ -143,37 +142,32 @@ class PKINIT:
 			print('Generating DH params...')
 			self.diffie = DirtyDH.from_dict( generate_dh_parameters(1024).native)
 			print('DH params generated.')
+		elif isinstance(dh_params, dict):
+			self.diffie = DirtyDH.from_dict(dh_params)
+		elif isinstance(dh_params, bytes):
+			self.diffie = DirtyDH.from_asn1(dh_params)
+		elif isinstance(dh_params, DirtyDH):
+			self.diffie = dh_params
 		else:
-			#print('Loading default DH params...')
-			if isinstance(dh_params, dict):
-				self.diffie = DirtyDH.from_dict(dh_params)
-			elif isinstance(dh_params, bytes):
-				self.diffie = DirtyDH.from_asn1(dh_params)
-			elif isinstance(dh_params, DirtyDH):
-				self.diffie = dh_params
-			else:
-				raise Exception('DH params must be either a bytearray or a dict')
+			raise Exception('DH params must be either a bytearray or a dict')
 
 
 	def build_asreq(self, target = None, cname = None, kdcopts = ['forwardable','renewable','proxiable', 'canonicalize']):
 		if isinstance(kdcopts, list):
 			kdcopts = set(kdcopts)
-		if cname is not None:
-			if isinstance(cname, str):
-				cname = [cname]
-		else:
+		if cname is None:
 			cname = [self.cname]
-		
-		if target is not None:
-			if isinstance(target, str):
-				target = [target]
-		else:
+
+		elif isinstance(cname, str):
+			cname = [cname]
+		if target is None:
 			target = ['127.0.0.1']
 
+		elif isinstance(target, str):
+			target = [target]
 		now = datetime.datetime.now(datetime.timezone.utc)
 
-		kdc_req_body_data = {}
-		kdc_req_body_data['kdc-options'] = KDCOptions(kdcopts)
+		kdc_req_body_data = {'kdc-options': KDCOptions(kdcopts)}
 		kdc_req_body_data['cname'] = PrincipalName({'name-type': NAME_TYPE.MS_PRINCIPAL.value, 'name-string': cname})
 		kdc_req_body_data['realm'] = 'WELLKNOWN:PKU2U'
 		kdc_req_body_data['sname'] = PrincipalName({'name-type': NAME_TYPE.MS_PRINCIPAL.value, 'name-string': target})
@@ -186,55 +180,50 @@ class PKINIT:
 
 
 		checksum = hashlib.sha1(kdc_req_body.dump()).digest()
-		
-		authenticator = {}
-		authenticator['cusec'] = now.microsecond
-		authenticator['ctime'] = now.replace(microsecond=0)
+
+		authenticator = {'cusec': now.microsecond, 'ctime': now.replace(microsecond=0)}
 		authenticator['nonce'] = secrets.randbits(31)
 		authenticator['paChecksum'] = checksum
-		
 
-		dp = {}
-		dp['p'] = self.diffie.p
-		dp['g'] = self.diffie.g
-		dp['q'] = 0 # mandatory parameter, but it is not needed
 
-		pka = {}
-		pka['algorithm'] = '1.2.840.10046.2.1'
-		pka['parameters'] = keys.DomainParameters(dp)
-		
-		spki = {}
-		spki['algorithm'] = keys.PublicKeyAlgorithm(pka)
+		dp = {'p': self.diffie.p, 'g': self.diffie.g, 'q': 0}
+		pka = {
+			'algorithm': '1.2.840.10046.2.1',
+			'parameters': keys.DomainParameters(dp),
+		}
+
+		spki = {'algorithm': keys.PublicKeyAlgorithm(pka)}
 		spki['public_key'] = self.diffie.get_public_key()
 
-		
-		authpack = {}
-		authpack['pkAuthenticator'] = PKAuthenticator(authenticator)
+
+		authpack = {'pkAuthenticator': PKAuthenticator(authenticator)}
 		authpack['clientPublicValue'] = keys.PublicKeyInfo(spki)
 		authpack['clientDHNonce'] = self.diffie.dh_nonce
-		
+
 		authpack = AuthPack(authpack)
 		signed_authpack = self.sign_authpack(authpack.dump(), wrap_signed = False)
-		
+
 		# ??????? This is absolutely nonsense, 
 		payload = length_encode(len(signed_authpack)) + signed_authpack
 		payload = b'\x80' + payload
 		signed_authpack = b'\x30' + length_encode(len(payload)) + payload
-		
-		pa_data_1 = {}
-		pa_data_1['padata-type'] = PaDataType.PK_AS_REQ.value
-		pa_data_1['padata-value'] = signed_authpack 
 
-		asreq = {}
-		asreq['pvno'] = 5
-		asreq['msg-type'] = 10
-		asreq['padata'] = [pa_data_1]
-		asreq['req-body'] = kdc_req_body
+		pa_data_1 = {
+			'padata-type': PaDataType.PK_AS_REQ.value,
+			'padata-value': signed_authpack,
+		}
+
+		asreq = {
+			'pvno': 5,
+			'msg-type': 10,
+			'padata': [pa_data_1],
+			'req-body': kdc_req_body,
+		}
 
 		return AS_REQ(asreq).dump()	
 
 	def build_apreq(self, asrep, session_key, cipher, subkey_data, krb_finished_data, flags = GSSAPIFlags.GSS_C_MUTUAL_FLAG | GSSAPIFlags.GSS_C_INTEG_FLAG  | GSSAPIFlags.GSS_C_EXTENDED_ERROR_FLAG):
-		
+
 
 		# TODO: https://www.ietf.org/rfc/rfc4757.txt
 		#subkey_data = {}
@@ -245,9 +234,10 @@ class PKINIT:
 		subkey_key = Key(subkey_cipher.enctype, subkey_data['keyvalue'])
 		subkey_checksum = _checksum_table[16] # ChecksumTypes.hmac_sha1_96_aes256
 
-		krb_finished_checksum_data = {}
-		krb_finished_checksum_data['cksumtype'] = 16
-		krb_finished_checksum_data['checksum'] = subkey_checksum.checksum(subkey_key, 41, krb_finished_data)
+		krb_finished_checksum_data = {
+			'cksumtype': 16,
+			'checksum': subkey_checksum.checksum(subkey_key, 41, krb_finished_data),
+		}
 
 		krb_finished_data = {}
 		krb_finished_data['gss-mic'] = Checksum(krb_finished_checksum_data)
@@ -260,29 +250,26 @@ class PKINIT:
 		ac = AuthenticatorChecksum()
 		ac.flags = flags
 		ac.channel_binding = b'\x00'*16
-		chksum = {}
-		chksum['cksumtype'] = 0x8003
-		chksum['checksum'] = ac.to_bytes() + extensions_data
-
+		chksum = {'cksumtype': 32771, 'checksum': ac.to_bytes() + extensions_data}
 		tii = LSAP_TOKEN_INFO_INTEGRITY()
 		tii.Flags = 1
 		tii.TokenIL = 0x00002000 # Medium integrity
 		tii.MachineID = bytes.fromhex('7e303fffe6bff25146addca4fbddf1b94f1634178eb4528fb2731c669ca23cde')
 
-		restriction_data = {}
-		restriction_data['restriction-type'] = 0
-		restriction_data['restriction'] = tii.to_bytes()
+		restriction_data = {'restriction-type': 0, 'restriction': tii.to_bytes()}
 		restriction_data = KERB_AD_RESTRICTION_ENTRY(restriction_data)
 
 		x = KERB_AD_RESTRICTION_ENTRYS([restriction_data]).dump()
 		restrictions = AuthorizationData([{ 'ad-type' : 141, 'ad-data' : x}]).dump()
 
-		
+
 
 		now = datetime.datetime.now(datetime.timezone.utc)
-		authenticator_data = {}
-		authenticator_data['authenticator-vno'] = krb5_pvno 
-		authenticator_data['crealm'] = Realm(asrep['crealm'])
+		authenticator_data = {
+			'authenticator-vno': krb5_pvno,
+			'crealm': Realm(asrep['crealm']),
+		}
+
 		authenticator_data['cname'] = asrep['cname']
 		authenticator_data['cusec'] = now.microsecond
 		authenticator_data['ctime'] = now.replace(microsecond=0)
@@ -290,24 +277,26 @@ class PKINIT:
 		authenticator_data['seq-number'] = 682437742 #??? TODO: check this!
 		authenticator_data['authorization-data'] = AuthorizationData([{'ad-type': 1, 'ad-data' : restrictions}])
 		authenticator_data['cksum'] = Checksum(chksum)
-		
-		
+
+
 		#print('Authenticator(authenticator_data).dump()')
 		#print(Authenticator(authenticator_data).dump().hex())
 
 		authenticator_data_enc = cipher.encrypt(session_key, 11, Authenticator(authenticator_data).dump(), None)
-		
+
 		ap_opts = ['mutual-required']
 
-		ap_req = {}
-		ap_req['pvno'] = krb5_pvno
-		ap_req['msg-type'] = MESSAGE_TYPE.KRB_AP_REQ.value
-		ap_req['ticket'] = Ticket(asrep['ticket'])
+		ap_req = {
+			'pvno': krb5_pvno,
+			'msg-type': MESSAGE_TYPE.KRB_AP_REQ.value,
+			'ticket': Ticket(asrep['ticket']),
+		}
+
 		ap_req['ap-options'] = APOptions(set(ap_opts))
 		ap_req['authenticator'] = EncryptedData({'etype': session_key.enctype, 'cipher': authenticator_data_enc})
-		
+
 		#pprint('AP_REQ \r\n%s' % AP_REQ(ap_req).native)
-		
+
 		#print(AP_REQ(ap_req).dump().hex())
 		#input()
 

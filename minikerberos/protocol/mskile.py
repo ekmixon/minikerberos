@@ -17,7 +17,7 @@ class KERB_AD_RESTRICTION_ENTRY(core.Sequence):
         ('restriction-type', core.Integer, {'tag_type': TAG, 'tag': 0}),
         ('restriction', core.OctetString, {'tag_type': TAG, 'tag': 1}),
     ]
-    
+
 class KERB_AD_RESTRICTION_ENTRYS(core.SequenceOf):
     _child_spec = KERB_AD_RESTRICTION_ENTRY
 

@@ -57,48 +57,57 @@ class AIOKerberosClient:
 
 	async def do_preauth(self, rep):
 		#now getting server's supported encryption methods
-		
+
 		supp_enc_methods = collections.OrderedDict()
-		for enc_method in METHOD_DATA.load(rep['e-data']).native:					
+		for enc_method in METHOD_DATA.load(rep['e-data']).native:			
 			data_type = PaDataType(enc_method['padata-type'])
-			
-			if data_type == PaDataType.ETYPE_INFO or data_type == PaDataType.ETYPE_INFO2:
-				if data_type == PaDataType.ETYPE_INFO:
-					enc_info_list = ETYPE_INFO.load(enc_method['padata-value'])
-					
-				elif data_type == PaDataType.ETYPE_INFO2:
-					enc_info_list = ETYPE_INFO2.load(enc_method['padata-value'])
-		
+
+			if data_type == PaDataType.ETYPE_INFO:
+				enc_info_list = ETYPE_INFO.load(enc_method['padata-value'])
+
 				for enc_info in enc_info_list.native:
 					supp_enc_methods[EncryptionType(enc_info['etype'])] = enc_info['salt']
-					logger.debug('Server supports encryption type %s with salt %s' % (EncryptionType(enc_info['etype']).name, enc_info['salt']))
-		
+					logger.debug(
+						f"Server supports encryption type {EncryptionType(enc_info['etype']).name} with salt {enc_info['salt']}"
+					)
+
+
+			elif data_type == PaDataType.ETYPE_INFO2:
+				enc_info_list = ETYPE_INFO2.load(enc_method['padata-value'])
+
+				for enc_info in enc_info_list.native:
+					supp_enc_methods[EncryptionType(enc_info['etype'])] = enc_info['salt']
+					logger.debug(
+						f"Server supports encryption type {EncryptionType(enc_info['etype']).name} with salt {enc_info['salt']}"
+					)
+
+
 		logger.debug('Constructing TGT request with auth data')
 		#now to create an AS_REQ with encrypted timestamp for authentication
-		pa_data_1 = {}
-		pa_data_1['padata-type'] = int(PADATA_TYPE('PA-PAC-REQUEST'))
+		pa_data_1 = {'padata-type': int(PADATA_TYPE('PA-PAC-REQUEST'))}
 		pa_data_1['padata-value'] = PA_PAC_REQUEST({'include-pac': True}).dump()
-		
+
 		now = datetime.datetime.now(datetime.timezone.utc)
 		#creating timestamp asn1
 		timestamp = PA_ENC_TS_ENC({'patimestamp': now.replace(microsecond=0), 'pausec': now.microsecond}).dump()
-		
+
 		supp_enc = self.usercreds.get_preferred_enctype(supp_enc_methods)
-		logger.debug('Selecting common encryption type: %s' % supp_enc.name)
+		logger.debug(f'Selecting common encryption type: {supp_enc.name}')
 		self.kerberos_cipher = _enctype_table[supp_enc.value]
 		self.kerberos_cipher_type = supp_enc.value
 		if 'salt' in enc_info and enc_info['salt'] is not None:
-			self.server_salt = enc_info['salt'].encode() 
+			self.server_salt = enc_info['salt'].encode()
 		self.kerberos_key = Key(self.kerberos_cipher.enctype, self.usercreds.get_key_for_enctype(supp_enc, salt = self.server_salt))
 		enc_timestamp = self.kerberos_cipher.encrypt(self.kerberos_key, 1, timestamp, None)
-		
-		
-		pa_data_2 = {}
-		pa_data_2['padata-type'] = int(PADATA_TYPE('ENC-TIMESTAMP'))
+
+
+		pa_data_2 = {'padata-type': int(PADATA_TYPE('ENC-TIMESTAMP'))}
 		pa_data_2['padata-value'] = EncryptedData({'etype': supp_enc.value, 'cipher': enc_timestamp}).dump()
-		
-		kdc_req_body = {}
-		kdc_req_body['kdc-options'] = KDCOptions(set(['forwardable','renewable','proxiable']))
+
+		kdc_req_body = {
+			'kdc-options': KDCOptions({'forwardable', 'renewable', 'proxiable'})
+		}
+
 		kdc_req_body['cname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': [self.usercreds.username]})
 		kdc_req_body['realm'] = self.usercreds.domain.upper()
 		kdc_req_body['sname'] = PrincipalName({'name-type': NAME_TYPE.PRINCIPAL.value, 'name-string': ['krbtgt', self.usercreds.domain.upper()]})
@@ -106,15 +115,16 @@ class AIOKerberosClient:
 		kdc_req_body['rtime'] = (now + datetime.timedelta(days=1)).replace(microsecond=0)
 		kdc_req_body['nonce'] = secrets.randbits(31)
 		kdc_req_body['etype'] = [supp_enc.value] #selecting according to server's preferences
-		
-		kdc_req = {}
-		kdc_req['pvno'] = krb5_pvno
-		kdc_req['msg-type'] = MESSAGE_TYPE.KRB_AS_REQ.value
-		kdc_req['padata'] = [pa_data_2,pa_data_1]
-		kdc_req['req-body'] = KDC_REQ_BODY(kdc_req_body)
-		
+
+		kdc_req = {
+			'pvno': krb5_pvno,
+			'msg-type': MESSAGE_TYPE.KRB_AS_REQ.value,
+			'padata': [pa_data_2, pa_data_1],
+			'req-body': KDC_REQ_BODY(kdc_req_body),
+		}
+
 		req = AS_REQ(kdc_req)
-		
+
 		logger.debug('Sending TGT request to server')
 		rep = await self.ksoc.sendrecv(req.dump())
 		if rep.name == 'KRB_ERROR':
@@ -125,21 +135,21 @@ class AIOKerberosClient:
 		try:
 			if self.ccache is None:
 				raise Exception('No CCACHE file found')
-			
+
 			for tgt, keystruct in self.ccache.get_all_tgt():
 				if self.usercreds.ccache_spn_strict_check is True:
-					our_user = str(self.usercreds.username) + '@' + self.usercreds.domain
+					our_user = f'{str(self.usercreds.username)}@{self.usercreds.domain}'
 					ticket_for = tgt['cname']['name-string'][0] + '@' + tgt['crealm']
 					if ticket_for.upper() == our_user.upper():
-						logger.debug('Found TGT for user %s' % our_user)
+						logger.debug(f'Found TGT for user {our_user}')
 						self.kerberos_TGT = tgt
 						self.kerberos_TGT_encpart = tgt['enc-part']
 						self.kerberos_session_key = Key(keystruct['keytype'], keystruct['keyvalue'])
 						self.kerberos_cipher = _enctype_table[keystruct['keytype']]
 						self.kerberos_cipher_type = keystruct['keytype']
-										
+
 						return True, None
-				
+
 				else:
 					self.kerberos_TGT = tgt
 					self.kerberos_TGT_encpart = tgt['enc-part']
@@ -148,8 +158,8 @@ class AIOKerberosClient:
 					self.kerberos_cipher_type = keystruct['keytype']
 					return True, None
 
-			logger.debug('No TGT found for user %s' % our_user)
-			raise Exception('No TGT found for user %s' % our_user) 
+			logger.debug(f'No TGT found for user {our_user}')
+			raise Exception(f'No TGT found for user {our_user}') 
 
 		except Exception as e:
 			return None, e

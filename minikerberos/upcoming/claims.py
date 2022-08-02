@@ -10,8 +10,7 @@ def decrypt_authenticator(authenticator_enc_type, authenticator_enc_data, key_by
 	cipherText = authenticator_enc_data
 	kerberos_key = Key(_enctype_table[authenticator_enc_type].enctype, key_bytes)
 	authenticator_data_dec = _enctype_table[authenticator_enc_type].decrypt(kerberos_key, key_usage, cipherText)
-	authenticator_dec_native = Authenticator.load(authenticator_data_dec).native
-	return authenticator_dec_native
+	return Authenticator.load(authenticator_data_dec).native
 
 
 asreq_1 = bytes.fromhex('3081f5a103020105a20302010aa32c302a3011a10402020080a20904073005a0030101ff3015a104020200a7a20d040b3009a00703050080000000a481ba3081b7a00703050040810010a11b3019a003020101a11230101b0e6f76657270726f74656374656424a20b1b09746573742e636f7270a31e301ca003020102a11530131b066b72627467741b09746573742e636f7270a511180f32303337303931333032343830355aa611180f32303337303931333032343830355aa70602045ef7d529a81530130201120201110201170201180202ff79020103a91d301b3019a003020114a11204104f56455250524f544543544544202020')
@@ -119,8 +118,8 @@ def decrypt_fast_as_req(session_key):
 
 
 	#### First we need to obtain the subkey from the 'armor' part of the PA-FX-FAST PADATA section. This is actually an AP_REQ structure that holds the Authenticator (encrypted with the TGT session key recieved using the machine account) which holds the subkey. This subkey is used together with the machine account session key to form the armorkey.
-	
-	
+
+
 	authenticator = decrypt_authenticator(armor_native['authenticator']['etype'], armor_native['authenticator']['cipher'], session_key)
 	computer_subkey_type = authenticator['subkey']['keytype']
 	computer_subkey_bytes = authenticator['subkey']['keyvalue']
@@ -136,7 +135,7 @@ def decrypt_fast_as_req(session_key):
 
 	krbfastreq_dec_data = _enctype_table[encfastreq['etype']].decrypt(armor_key, 51, cipherText)
 	krbfastreq_dec = KrbFastReq.load(krbfastreq_dec_data).native
-	
+
 	pprint(krbfastreq_dec)
 	print('krbfastreq_dec sucsess dec')
 
@@ -157,7 +156,7 @@ def decrypt_fast_as_rep(armor_key_bytes, computer_subkey_bytes):
 	armor_key = Key(_enctype_table[encfastrep['etype']].enctype, armor_key_bytes)
 	krbfastrep_dec_data = _enctype_table[encfastrep['etype']].decrypt(armor_key, 52, cipherText)
 	krbfastrep_dec = KrbFastResponse.load(krbfastrep_dec_data).native
-	
+
 	pprint(krbfastrep_dec)
 	print('krbfastrep_dec sucsess dec')
 	strengthen_key = Key(_enctype_table[krbfastrep_dec['strengthen-key']['keytype']].enctype , krbfastrep_dec['strengthen-key']['keyvalue'])
@@ -177,9 +176,9 @@ def decrypt_fast_as_rep(armor_key_bytes, computer_subkey_bytes):
 			input()
 		except:
 			continue
-	
+
 	input(ku)
-	
+
 
 	return krbfastrep_dec['strengthen-key']['keyvalue'], krbfastrep_dec, armor_key
 
@@ -201,7 +200,7 @@ def decrypt_fast_tgs_req(session_key):
 			authenticator_enc_type = apreq['authenticator']['etype']
 			authenticator_enc_data = apreq['authenticator']['cipher']
 			break
-	
+
 	a = None
 	for i in range(100):
 		try:
@@ -216,7 +215,7 @@ def decrypt_fast_tgs_req(session_key):
 	if a is None:
 		print('No key usage found :(')
 	else:
-		print('OK!!!!! %s' % a)
+		print(f'OK!!!!! {a}')
 
 armor_key, decrypt_fast_as_req = decrypt_fast_as_req(computer_session_key_bytes)
 strengthen_key, krbfastrep, armor_key = decrypt_fast_as_rep(armor_key, bytes.fromhex(cred.kerberos_key_aes_256))

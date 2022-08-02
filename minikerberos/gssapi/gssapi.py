@@ -119,120 +119,120 @@ class GSSAPI_RC4:
 	
 	def GSS_GetMIC(self, data, sequenceNumber, direction = 'init'):
 		GSS_GETMIC_HEADER = b'\x60\x23\x06\x09\x2a\x86\x48\x86\xf7\x12\x01\x02\x02'
-		
+
 		# Let's pad the data
 		pad = (4 - (len(data) % 4)) & 0x3
 		padStr = bytes([pad]) * pad
 		data += padStr
-		
+
 		mic = GSSMIC_RC4()
-		
+
 		if direction == 'init':
 			mic.SND_SEQ = sequenceNumber.to_bytes(4, 'big', signed = False) + b'\x00'*4
 		else:
 			mic.SND_SEQ = sequenceNumber.to_bytes(4, 'big', signed = False) + b'\xff'*4
-		
+
 		Ksign_ctx = hmac_md5(self.session_key.contents)
 		Ksign_ctx.update(b'signaturekey\0')
 		Ksign = Ksign_ctx.digest()
-		
+
 		id = 15
 		temp = md5( id.to_bytes(4, 'little', signed = False) +  mic.to_bytes()[:8] ).digest()
 		chksum_ctx = hmac_md5(Ksign)
 		chksum_ctx.update(temp)
 		mic.SGN_CKSUM = chksum_ctx.digest()[:8]
-		
+
 		id = 0
 		temp = hmac_md5(self.session_key.contents)
 		temp.update(id.to_bytes(4, 'little', signed = False))
-		
+
 		Kseq_ctx = hmac_md5(temp.digest())
 		Kseq_ctx.update(mic.SGN_CKSUM)
 		Kseq = Kseq_ctx.digest()
-		
+
 		mic.SGN_CKSUM = RC4(Kseq).encrypt(mic.SND_SEQ)
-		
+
 		return GSS_GETMIC_HEADER + mic.to_bytes()
 		
 	
 	def GSS_Wrap(self, data, seq_num, direction = 'init', encrypt=True, auth_data=None):
 		GSS_WRAP_HEADER = b'\x60\x2b\x06\x09\x2a\x86\x48\x86\xf7\x12\x01\x02\x02'
-		
+
 		pad = (8 - (len(data) % 8)) & 0x7
 		padStr = bytes([pad]) * pad
 		data += padStr
-		
+
 		token = GSSWRAP_RC4()
 		token.SEAL_ALG = b'\x10\x00'
-		
+
 		if direction == 'init':
 			token.SND_SEQ = seq_num.to_bytes(4, 'big', signed = False) + b'\x00'*4
 		else:
 			token.SND_SEQ = seq_num.to_bytes(4, 'big', signed = False) + b'\xff'*4
-			
+
 		token.Confounder = os.urandom(8)
-		
+
 		temp = hmac_md5(self.session_key .contents)
 		temp.update(b'signaturekey\0')
 		Ksign = temp.digest()
-		
+
 		id = 13
 		Sgn_Cksum = md5( id.to_bytes(4, 'little', signed = False) +  token.to_bytes()[:8] + token.Confounder + data).digest()
 		temp = hmac_md5(Ksign)
 		temp.update(Sgn_Cksum)
 		token.SGN_CKSUM = temp.digest()[:8]
-		
-		
+
+
 		klocal = b''
 		for b in self.session_key .contents:
 			klocal += bytes([b ^ 0xf0])
-			
+
 		id = 0
 		temp = hmac_md5(klocal)
 		temp.update(id.to_bytes(4, 'little', signed = False))
 		temp = hmac_md5(temp.digest())
 		temp.update(seq_num.to_bytes(4, 'big', signed = False))
 		Kcrypt = temp.digest()
-		
+
 		id = 0
 		temp = hmac_md5(self.session_key .contents)
 		temp.update(id.to_bytes(4, 'little', signed = False))
 		temp = hmac_md5(temp.digest())
 		temp.update(token.SGN_CKSUM)
 		Kseq = temp.digest()
-		
+
 		token.SND_SEQ = RC4(Kseq).encrypt(token.SND_SEQ)
-		
-		
+
+
 		if auth_data is not None:
 			wrap = GSSWRAP_RC4.from_bytes(auth_data[8 + len(GSS_WRAP_HEADER):])
-			
+
 			id = 0
 			temp = hmac_md5(self.session_key .contents)
 			temp.update(id.to_bytes(4, 'little', signed = False))
 			temp = hmac_md5(temp.digest())
 			temp.update(wrap.SGN_CKSUM)
-			
+
 			snd_seq = RC4(temp.digest()).encrypt(wrap.SND_SEQ)
-			
+
 			id = 0
 			temp = hmac_md5(klocal)
 			temp.update(id.to_bytes(4, 'little', signed = False))
 			temp = hmac_md5(temp.digest())
 			temp.update(snd_seq[:4])
 			Kcrypt = temp.digest()
-			
+
 			rc4 = RC4(Kcrypt)
 			cipherText = rc4.decrypt(token.Confounder + data)[8:]
-			
+
 		elif encrypt is True:
 			rc4 = RC4(Kcrypt)
 			token.Confounder = rc4.encrypt(token.Confounder)
 			cipherText = rc4.encrypt(data)
-		
+
 		else:
 			cipherText = data
-			
+
 		finalData = GSS_WRAP_HEADER + token.to_bytes()
 		return cipherText, finalData
 		
@@ -321,13 +321,11 @@ class GSSAPI_AES:
 	def rotate(self, data, numBytes):
 		numBytes %= len(data)
 		left = len(data) - numBytes
-		result = data[left:] + data[:left]
-		return result
+		return data[left:] + data[:left]
 		
 	def unrotate(self, data, numBytes):
 		numBytes %= len(data)
-		result = data[numBytes:] + data[:numBytes]
-		return result
+		return data[numBytes:] + data[:numBytes]
 		
 	def GSS_GetMIC(self, data, seq_num):
 		pad = (4 - (len(data) % 4)) & 0x3
@@ -347,20 +345,20 @@ class GSSAPI_AES:
 		pad = (cipher.blocksize - (len(data) % cipher.blocksize)) & 15
 		padStr = b'\xFF' * pad
 		data += padStr
-		
+
 		t = GSSWrapToken()
 		t.Flags = FlagsField.Sealed | FlagsField.AcceptorSubkey
 		t.EC = pad
 		t.RRC = 0
 		t.SND_SEQ = seq_num
-		
+
 		cipher_text = cipher.encrypt(self.session_key, KG_USAGE.INITIATOR_SEAL.value,  data + t.to_bytes(), None)
 		t.RRC = 28 #[RFC4121] section 4.2.5
 		cipher_text = self.rotate(cipher_text, t.RRC + t.EC)
-		
+
 		ret1 = cipher_text[16 + t.RRC + t.EC:]
 		ret2 = t.to_bytes() + cipher_text[:16 + t.RRC + t.EC]
-		
+
 		return ret1, ret2
 		
 	def GSS_Unwrap(self, data, seq_num, direction='init', auth_data = None):
@@ -382,7 +380,7 @@ def get_gssapi(session_key):
 	elif session_key.enctype == encryption.Enctype.RC4:
 		return GSSAPI_RC4(session_key)
 	else:
-		raise Exception('Unsupported etype %s' % session_key.enctype)
+		raise Exception(f'Unsupported etype {session_key.enctype}')
 		
 		
 def test():
@@ -398,15 +396,15 @@ def test():
 	sequenceNumber = 0
 	ret1 = bytes.fromhex('4ae025fa2a9c337c75c024d9d8f0186c75a4a9060e2a40a9ad024317bf5df6a86cb4a764a9ca36843f8fa4f99c03e2bde46f5a29aafc83dacdf9f0a5677446b5d910417142dc7b7ba7ded76cddc4acf9bf7ed440')
 	ret2 = bytes.fromhex('050406ff000c001c000000000000000008cb9850e5701f2f9285dad6463ca8d0e365d4f1700f3d054e242ebcde2f3146ddd411a627af74860880ed78d6196dde3f3fb23eeea650bc')
-	
+
 	gssapi = get_gssapi(session_key)
 	r1, r2 = gssapi.GSS_Wrap(data, sequenceNumber)
-	
+
 	gssapi.GSS_Unwrap(r1, 0, auth_data = b'\xff'*8 + r2)
-	
+
 	print(r1.hex())
 	print(ret1.hex())
-	
+
 	assert r1 == ret1
 	assert r2 == ret2
 

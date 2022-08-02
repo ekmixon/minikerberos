@@ -33,17 +33,15 @@ class KerberosCredential:
 
 	def get_preferred_enctype(self, server_enctypes):
 		client_enctypes = self.get_supported_enctypes(as_int=False)
-		common_enctypes = list(set([s_enctype for s_enctype in server_enctypes]) & set(client_enctypes))
+		common_enctypes = list(set(list(server_enctypes)) & set(client_enctypes))
 
 		for c_enctype in client_enctypes:
 			if c_enctype in common_enctypes:
 				return c_enctype
 
-		raise Exception('No common supported enctypes! Server: %s Client: %s' % (
-			', '.join([s_enctype.name for s_enctype in server_enctypes]),
-			', '.join([c_enctype.name for c_enctype in client_enctypes])
+		raise Exception(
+			f"No common supported enctypes! Server: {', '.join([s_enctype.name for s_enctype in server_enctypes])} Client: {', '.join([c_enctype.name for c_enctype in client_enctypes])}"
 		)
-						)
 
 	def get_key_for_enctype(self, etype, salt = None):
 		"""
@@ -97,7 +95,7 @@ class KerberosCredential:
 				raise Exception('There is no key for DES3 encryption')
 
 		else:
-			raise Exception('Unsupported encryption type: %s' % etype.name)
+			raise Exception(f'Unsupported encryption type: {etype.name}')
 
 	def get_supported_enctypes(self, as_int = True):
 		supp_enctypes = collections.OrderedDict()
@@ -123,7 +121,7 @@ class KerberosCredential:
 
 		if as_int == True:
 			return [etype.value for etype in supp_enctypes]
-		return [etype for etype in supp_enctypes]
+		return list(supp_enctypes)
 	
 	@staticmethod
 	def from_krbcred(keytab_file_path: str, principal: str = None, realm: str = None):
@@ -181,12 +179,16 @@ class KerberosCredential:
 		return k
 
 	def add_secret(self, st: KerberosSecretType, secret: str):
-		if st == KerberosSecretType.PASSWORD or st == KerberosSecretType.PW or st == KerberosSecretType.PASS:
-			if secret == '' or secret is None:
+		if st in [
+			KerberosSecretType.PASSWORD,
+			KerberosSecretType.PW,
+			KerberosSecretType.PASS,
+		]:
+			if not secret or secret is None:
 				self.password = getpass.getpass('Enter Kerberos credential password:')
 			else:
 				self.password = secret
-		elif st == KerberosSecretType.NT or st == KerberosSecretType.RC4:
+		elif st in [KerberosSecretType.NT, KerberosSecretType.RC4]:
 			self.nt_hash = secret
 			self.kerberos_key_rc4 = secret
 		elif st == KerberosSecretType.AES128:
@@ -203,7 +205,7 @@ class KerberosCredential:
 				raise Exception('AES key incorrect length!')
 		elif st == KerberosSecretType.DES:
 			self.kerberos_key_des = secret
-		elif st == KerberosSecretType.DES3 or st == KerberosSecretType.TDES:
+		elif st in [KerberosSecretType.DES3, KerberosSecretType.TDES]:
 			self.kerberos_key_des3 = secret
 		elif st == KerberosSecretType.CCACHE:
 			self.ccache = CCACHE.from_file(secret)
